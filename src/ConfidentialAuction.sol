@@ -231,6 +231,51 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     }
   }
 
+  // Returns the seller for the most recent auction of the given asset.
+  function getSeller(
+      address tokenContract,
+      uint256 tokenId
+  )
+    external view
+    returns (address seller)
+  {
+    return auctions_[tokenContract][tokenId].seller;
+  }
+
+  // Returns the second highest bid (in wei) for the most recent auction of 
+  function getSecondHighestBid(
+      address tokenContract,
+      uint256 tokenId
+  )
+      external
+      view
+      returns (uint256 bid)
+  {
+      return auctions_[tokenContract][tokenId].secondTopBid * BASE_BID_UNIT;
+  }
+
+  // Returns vault address associated with the highest bid for the most 
+  // recent auction of the given asset.
+  function getHighestBidVault(
+      address tokenContract,
+      uint256 tokenId
+  )
+      external
+      view
+      returns (address vault)
+  {
+      return auctions_[tokenContract][tokenId].topBidVault;
+  }
+
+  // Gets the parameters and state of an auction in storage.
+  function getAuction(address tokenContract, uint256 tokenId)
+      external
+      view
+      returns (Auction memory auction)
+  {
+      return auctions_[tokenContract][tokenId];
+  }
+
   // Computes the `CREATE2` address of the `ConfidentialVault` with the given 
   // parameters. Note that the vault contract may not be deployed yet.
   function getVaultAddress(
