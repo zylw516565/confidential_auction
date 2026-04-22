@@ -4,6 +4,7 @@ pragma solidity ^0.8.33;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
+import "./ConfidentialVault.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   //The base unit for bids.
@@ -111,6 +112,74 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revealPeriod,
       reservePrice
     );
+  }
+
+
+  function revealBid(
+      address tokenContract,
+      uint256 tokenId,
+      uint48 bidValue,
+      bytes32 salt,
+      CollateralizationProof calldata proof
+  )
+      external
+      nonReentrant
+  {
+    Auction storage auction = auctions_[tokenContract][tokenId];
+
+    // The bidding for the auction hasn't started yet or the time for disclosing the bid has passed
+    if(
+      block.timestamp <= auction.endOfBiddingPeriod ||
+      block.timestamp >  auction.endOfRevealPeriod
+    ) {
+      revert NotInRevealPeriodError();
+    }
+
+    uint32 auctionIndex = auction.count;
+    address vault = getVaultAddress(
+        tokenContract, 
+        tokenId, 
+        auctionIndex, 
+        msg.sender, 
+        bidValue, 
+        salt
+    );
+
+
+
+
+  }
+
+  // Computes the `CREATE2` address of the `ConfidentialVault` with the given 
+  // parameters. Note that the vault contract may not be deployed yet.
+  function getVaultAddress(
+      address tokenContract,
+      uint256 tokenId,
+      uint32 auctionIndex,
+      address bidder,
+      uint48 bidValue,
+      bytes32 salt
+  )
+      public
+      view
+      returns (address vault)
+  {
+      // Compute `CREATE2` address of vault
+      return address(uint160(uint256(keccak256(abi.encodePacked(
+          bytes1(0xff),
+          address(this),
+          salt,
+          keccak256(abi.encodePacked(
+              type(ConfidentialVault).creationCode,
+              abi.encode(
+                  tokenContract, 
+                  tokenId, 
+                  auctionIndex, 
+                  bidder, 
+                  bidValue
+              )
+          ))
+      )))));
   }
 
 
