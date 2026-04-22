@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
 import "./ConfidentialVault.sol";
+import "./LibBalanceProof.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   //The base unit for bids.
@@ -145,9 +146,89 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
         salt
     );
 
+    if(revealedVaults_[vault]) {
+      revert BidAlreadyRevealedError(vault);
+    }
+    revealedVaults_[vault] = true;
 
+    uint256 bidValueWei = bidValue * BASE_BID_UNIT;
+    bool isCollateralized = true;
 
+    // If this is the first bid revealed, record the block hash of the 
+    // previous block. All other bids must have been collateralized by 
+    // that block. 
+    if (auction.collateralizationDeadlineBlockHash == bytes32(0)) {
+      if (vault.balance < bidValueWei) {
+          // Deploy vault to return ETH to bidder
+          new ConfidentialVault{salt: salt}(
+              tokenContract, 
+              tokenId, 
+              auctionIndex, 
+              msg.sender,
+              bidValue
+          );
+          isCollateralized = false;
+      } else {
+          auction.collateralizationDeadlineBlockHash = blockhash(block.number - 1);
+          emit CollateralizationDeadlineSet(
+              tokenContract, 
+              tokenId, 
+              auctionIndex,
+              block.number - 1
+          );
+      }
+    } else {
+      // All other bidders must prove that their balance was 
+      // sufficiently collateralized by the deadline block.
+      uint256 vaultBalance = _getProvenAccountBalance(
+          proof.accountMerkleProof,
+          proof.blockHeaderRLP,
+          auction.collateralizationDeadlineBlockHash,
+          vault
+      );
+      if (vaultBalance < bidValueWei) {
+          // Deploy vault to return ETH to bidder
+          new ConfidentialVault{salt: salt}(
+              tokenContract, 
+              tokenId, 
+              auctionIndex, 
+              msg.sender,
+              bidValue
+          );
+          isCollateralized = false;
+      }
+    }
 
+    if (isCollateralized) {
+        // Update record of (second-)highest bid as necessary
+        uint64 currentTopBid = auction.topBid;
+        if (bidValue > currentTopBid) {
+            auction.topBid = bidValue;
+            auction.secondTopBid = currentTopBid;
+            auction.topBidVault = vault;
+        } else {
+            if (bidValue > auction.secondTopBid) {
+                auction.secondTopBid = bidValue;
+            }
+            // Deploy vault to return ETH to bidder
+            new ConfidentialVault{salt: salt}(
+                tokenContract, 
+                tokenId, 
+                auctionIndex, 
+                msg.sender,
+                bidValue
+            );
+        }
+
+        emit BidRevealed(
+            tokenContract,
+            tokenId,
+            vault,
+            msg.sender,
+            salt,
+            bidValueWei
+        );
+    }
   }
 
   // Computes the `CREATE2` address of the `ConfidentialVault` with the given 
@@ -182,5 +263,24 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       )))));
   }
 
-
+  // Gets the balance of the given account at a past block by 
+  // traversing the given Merkle proof for the state trie. 
+  function _getProvenAccountBalance(
+      bytes[] memory proof,
+      bytes memory blockHeaderRLP,
+      bytes32 blockHash,
+      address account
+  )
+      internal
+      virtual
+      view
+      returns (uint256 accountBalance)
+  {
+      return LibBalanceProof.getProvenAccountBalance(
+          proof,
+          blockHeaderRLP,
+          blockHash,
+          account
+      );
+  }
 }
