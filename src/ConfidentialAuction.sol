@@ -15,12 +15,13 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   struct Auction {
     address seller;
     uint32  endOfBiddingPeriod;
-    uint32  endOfRevealPeriod;
     bool    started;
     uint32  count;
     //-------------------
     uint256  topBid;
     uint256  secondTopBid;
+    uint256  reservePrice;
+    address  topBidder;
     //-------------------
     bytes32 collateralizationDeadlineBlockHash;
   }
@@ -103,7 +104,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
     auction.seller = msg.sender;
     auction.endOfBiddingPeriod = uint32(block.timestamp) + bidPeriod;
-    auction.endOfRevealPeriod  = uint32(block.timestamp) + bidPeriod + revealPeriod;
 
     // Increment auction count
     auction.count++;
@@ -113,7 +113,9 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     // pay at least this price.
     auction.topBid = reservePrice;
     auction.secondTopBid = reservePrice;
+    auction.reservePrice = reservePrice;
     // Reset
+    auction.topBidder = address(0);
     auction.collateralizationDeadlineBlockHash = bytes32(0);
 
     // The seller transfers the NFT assets to the current contract
@@ -136,8 +138,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   /// @param amount The value of the bid.
   function bid(
     address tokenContract,
-    uint256 tokenId,
-    uint256 amount
+    uint256 tokenId
   )
     external payable nonReentrant
   {
@@ -154,12 +155,10 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revert NotInBidPeriodError();
     }
 
+    uint256 amount = msg.value;
     if(amount <= 0) {
       revert InvalidBidError(amount);
     }
-
-    require(msg.sender.balance >= amount, InefficiencyBalanceError(msg.sender.balance, amount));
-    address(this).call{value: amount}("");
 
     biddings_[msg.sender].bidValue = amount;
     biddings_[msg.sender].tokenContract = tokenContract;
@@ -167,10 +166,13 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
     uint256 currentTopBid = auction.topBid;
     if(amount > auction.topBid) {
-      auction.topBid = amount;
+      auction.topBid       = amount;
+      auction.topBidder    = msg.sender;
       auction.secondTopBid = currentTopBid;
-    } else if (amount > auction.secondTopBid) {
-      auction.secondTopBid = amount;
+    } else {
+      if (amount > auction.secondTopBid) {
+        auction.secondTopBid = amount;
+      }
     }
 
     emit Bidded(
@@ -179,121 +181,51 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     );
   }
 
+  fallback() external payable {}
 
-  // function revealBid(
-  //     address tokenContract,
-  //     uint256 tokenId,
-  //     uint48 bidValue,
-  //     bytes32 salt,
-  //     CollateralizationProof calldata proof
-  // )
-  //     external
-  //     nonReentrant
-  // {
-  //   Auction storage auction = auctions_[tokenContract][tokenId];
+  /// @notice Ends an active auction. Can only end an auction if the bid phase is over.
+  /// @param tokenContract The address of the ERC721 contract for the asset auctioned.
+  /// @param tokenId The ERC721 token ID of the asset auctioned.
+  function endAuction(
+      address tokenContract,
+      uint256 tokenId
+  )
+    external
+    nonReentrant
+  {
+    if(tokenContract == address(0)) {
+      revert InvalidTokenContractError();
+    }
 
-  //   // The bidding for the auction hasn't started yet or the time for disclosing the bid has passed
-  //   if(
-  //     block.timestamp <= auction.endOfBiddingPeriod ||
-  //     block.timestamp >  auction.endOfRevealPeriod
-  //   ) {
-  //     revert NotInRevealPeriodError();
-  //   }
+    Auction storage auction = auctions_[tokenContract][tokenId];
 
-  //   uint32 auctionIndex = auction.count;
-  //   address vault = getVaultAddress(
-  //       tokenContract, 
-  //       tokenId, 
-  //       auctionIndex, 
-  //       msg.sender, 
-  //       bidValue, 
-  //       salt
-  //   );
+    if (block.timestamp <= auction.endOfBiddingPeriod) {
+      revert BidPeriodOngoingError(block.timestamp, auction.endOfBiddingPeriod);
+    }
 
-  //   if(revealedVaults_[vault]) {
-  //     revert BidAlreadyRevealedError(vault);
-  //   }
-  //   revealedVaults_[vault] = true;
+    // No one made a bid.
+    if(
+      auction.topBid <= auction.reservePrice ||
+      address(0) == auction.topBidder
+    ) {
+      // No winner, return asset to seller.
+      ERC721(tokenContract).safeTransferFrom(address(this), auction.seller, tokenId);
+    } else {
+      // Transfer auctioned asset to top bidder
+      ERC721(tokenContract).safeTransferFrom(address(this), auction.topBidder , tokenId);
 
-  //   uint256 bidValueWei = bidValue * BASE_BID_UNIT;
-  //   bool isCollateralized = true;
+      // Transfer ETH to seller
+      require(address(this).balance >= auction.secondTopBid);
+      (bool success, ) = auction.seller.call{value: auction.secondTopBid}("");
+      require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
 
-  //   // If this is the first bid revealed, record the block hash of the 
-  //   // previous block. All other bids must have been collateralized by 
-  //   // that block. 
-  //   if (auction.collateralizationDeadlineBlockHash == bytes32(0)) {
-  //     if (vault.balance < bidValueWei) {
-  //         // Deploy vault to return ETH to bidder
-  //         new ConfidentialVault{salt: salt}(
-  //             tokenContract, 
-  //             tokenId, 
-  //             auctionIndex, 
-  //             msg.sender,
-  //             bidValue
-  //         );
-  //         isCollateralized = false;
-  //     } else {
-  //         auction.collateralizationDeadlineBlockHash = blockhash(block.number - 1);
-  //         emit CollateralizationDeadlineSet(
-  //             tokenContract, 
-  //             tokenId, 
-  //             auctionIndex,
-  //             block.number - 1
-  //         );
-  //     }
-  //   } else {
-  //     // All other bidders must prove that their balance was 
-  //     // sufficiently collateralized by the deadline block.
-  //     uint256 vaultBalance = _getProvenAccountBalance(
-  //         proof.accountMerkleProof,
-  //         proof.blockHeaderRLP,
-  //         auction.collateralizationDeadlineBlockHash,
-  //         vault
-  //     );
-  //     if (vaultBalance < bidValueWei) {
-  //         // Deploy vault to return ETH to bidder
-  //         new ConfidentialVault{salt: salt}(
-  //             tokenContract, 
-  //             tokenId, 
-  //             auctionIndex, 
-  //             msg.sender,
-  //             bidValue
-  //         );
-  //         isCollateralized = false;
-  //     }
-  //   }
-
-  //   if (isCollateralized) {
-  //       // Update record of (second-)highest bid as necessary
-  //       uint64 currentTopBid = auction.topBid;
-  //       if (bidValue > currentTopBid) {
-  //           auction.topBid = bidValue;
-  //           auction.secondTopBid = currentTopBid;
-  //           auction.topBidVault = vault;
-  //       } else {
-  //           if (bidValue > auction.secondTopBid) {
-  //               auction.secondTopBid = bidValue;
-  //           }
-  //           // Deploy vault to return ETH to bidder
-  //           new ConfidentialVault{salt: salt}(
-  //               tokenContract, 
-  //               tokenId, 
-  //               auctionIndex, 
-  //               msg.sender,
-  //               bidValue
-  //           );
-  //       }
-
-  //       emit BidRevealed(
-  //           tokenContract,
-  //           tokenId,
-  //           vault,
-  //           msg.sender,
-  //           salt,
-  //           bidValueWei
-  //       );
-  //   }
-  // }
+      // returning any excess to bidder
+      uint256 excessETH = biddings_[auction.topBidder].bidValue - auction.secondTopBid;
+      require(address(this).balance >= excessETH);
+      (bool success, ) =  auction.topBidder.call{value: excessETH}("");
+      require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
+    }
+  }
 
   // Returns the seller for the most recent auction of the given asset.
   function getSeller(
