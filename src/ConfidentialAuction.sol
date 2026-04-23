@@ -38,7 +38,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       uint256 tokenId,
       address seller,
       uint32 bidPeriod,
-      uint32 revealPeriod,
       uint256 reservePrice
   );
 
@@ -83,7 +82,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     address tokenContract,
     uint256 tokenId,
     uint32  bidPeriod,
-    uint32  revealPeriod,
     uint64  reservePrice
   )
     external nonReentrant
@@ -96,10 +94,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
     if (bidPeriod < 1 hours) {
       revert BidPeriodTooShortError(bidPeriod);
-    }
-
-    if (revealPeriod < 1 hours) {
-      revert RevealPeriodTooShortError(revealPeriod);
     }
 
     auction.seller = msg.sender;
@@ -127,7 +121,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       tokenId,
       msg.sender,
       bidPeriod,
-      revealPeriod,
       reservePrice
     );
   }
@@ -223,7 +216,49 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       require(address(this).balance >= excessETH);
       (success, ) =  auction.topBidder.call{value: excessETH}("");
       require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
+
+      // reset top bidder's bidValue
+      biddings_[auction.topBidder].bidValue = 0;
     }
+  }
+
+  /// @notice Withdraws collateral from auction contract once an auction is over.
+  /// @param tokenContract The address of the ERC721 contract for the asset
+  ///        that was auctioned.
+  /// @param tokenId The ERC721 token ID of the asset that was auctioned.
+  function withdrawCollateral(
+      address tokenContract,
+      uint256 tokenId
+  )
+      external
+      nonReentrant
+  {
+    if(tokenContract == address(0)) {
+      revert InvalidTokenContractError();
+    }
+
+    Auction storage auction = auctions_[tokenContract][tokenId];
+
+    if (block.timestamp <= auction.endOfBiddingPeriod) {
+      revert BidPeriodOngoingError(block.timestamp, auction.endOfBiddingPeriod);
+    }
+
+    uint256 withdrawAmount = biddings_[msg.sender].bidValue;
+    if (
+      withdrawAmount <= 0 ||
+      tokenContract != biddings_[msg.sender].tokenContract ||
+      tokenId       != biddings_[msg.sender].tokenId
+    ) {
+      revert NoRefundBalanceError();
+    }
+
+    require(address(this).balance >= withdrawAmount, NoRefundBalanceError());
+
+    // reset bidder's bidValue
+    biddings_[msg.sender].bidValue = 0;
+
+    (bool success, ) = msg.sender.call{value: withdrawAmount}("");
+    require(success, 'TransferHelper::call: ETH transfer failed');
   }
 
   // Returns the seller for the most recent auction of the given asset.
@@ -256,38 +291,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       returns (Auction memory auction)
   {
       return auctions_[tokenContract][tokenId];
-  }
-
-  // Computes the `CREATE2` address of the `ConfidentialVault` with the given 
-  // parameters. Note that the vault contract may not be deployed yet.
-  function getVaultAddress(
-      address tokenContract,
-      uint256 tokenId,
-      uint32 auctionIndex,
-      address bidder,
-      uint48 bidValue,
-      bytes32 salt
-  )
-      public
-      view
-      returns (address vault)
-  {
-      // Compute `CREATE2` address of vault
-      return address(uint160(uint256(keccak256(abi.encodePacked(
-          bytes1(0xff),
-          address(this),
-          salt,
-          keccak256(abi.encodePacked(
-              type(ConfidentialVault).creationCode,
-              abi.encode(
-                  tokenContract, 
-                  tokenId, 
-                  auctionIndex, 
-                  bidder, 
-                  bidValue
-              )
-          ))
-      )))));
   }
 
   // Gets the balance of the given account at a past block by 

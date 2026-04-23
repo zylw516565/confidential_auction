@@ -6,7 +6,6 @@ interface IConfidentialAuctionErrors {
     error BidPeriodOngoingError(uint256 currentTimestamp, uint256 endOfBiddingPeriod);
     error InvalidAuctionIndexError(uint32 index);
     error BidPeriodTooShortError(uint32 bidPeriod);
-    error RevealPeriodTooShortError(uint32 revealPeriod);
     error NotInBidPeriodError();
     error NotInRevealPeriodError();
     error IncorrectVaultAddressError(address expectedVault, address actualVault);
@@ -16,4 +15,5 @@ interface IConfidentialAuctionErrors {
     error InvalidTokenContractError();
     error InvalidBidError(uint256 bid);
     error InefficiencyBalanceError(uint256 balance, uint256 amount);
+    error NoRefundBalanceError();
 }
