@@ -135,7 +135,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   /// @param tokenContract The address of the ERC721 contract for the asset
   ///        being auctioned.
   /// @param tokenId The ERC721 token ID of the asset being auctioned.
-  /// @param amount The value of the bid.
   function bid(
     address tokenContract,
     uint256 tokenId
@@ -222,7 +221,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       // returning any excess to bidder
       uint256 excessETH = biddings_[auction.topBidder].bidValue - auction.secondTopBid;
       require(address(this).balance >= excessETH);
-      (bool success, ) =  auction.topBidder.call{value: excessETH}("");
+      (success, ) =  auction.topBidder.call{value: excessETH}("");
       require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
     }
   }
