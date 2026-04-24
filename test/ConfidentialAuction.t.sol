@@ -5,8 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import "../src/ConfidentialAuction.sol";
 import "./utils/TestActors.sol";
 import "./utils/TestERC721.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
+  using Strings for *;
+
   ConfidentialAuction auction;
   TestERC721 erc721;
 
@@ -103,6 +106,33 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     assertEq(!statusBeforeEnd, statusAfterEnd, "statusAfterEnd");
     assertEq(false, statusAfterEnd, "statusAfterEnd");
   }
+
+  function testCannotEndAuctionBeforeCreateAuction() external {
+    vm.expectRevert(NoNeedEndAuction.selector);
+
+    auction.endAuction(address(erc721), TOKEN_ID);
+    createAuction(TOKEN_ID);
+  }
+
+  function testCannotEndAuctionBeforeEndOfBid() external {
+    ConfidentialAuction.Auction memory beforeAuction = createAuction(TOKEN_ID);
+
+    bytes memory expectError = bytes.concat(
+      bytes("BidPeriodOngoingError("),
+      bytes(block.timestamp.toString()),
+      bytes(", "),
+      bytes(beforeAuction.endOfBiddingPeriod.toString()),
+      bytes(")"));
+
+    console2.log(string(expectError));
+    vm.expectRevert(expectError);
+
+    auction.endAuction(address(erc721), TOKEN_ID);
+  }
+
+
+
+
 
 //-------------------------------------------------------------------
 
