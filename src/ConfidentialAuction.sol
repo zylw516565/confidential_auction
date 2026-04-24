@@ -4,7 +4,6 @@ pragma solidity ^0.8.33;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
-import "./ConfidentialVault.sol";
 import "./LibBalanceProof.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
@@ -22,8 +21,12 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     uint256  secondTopBid;
     uint256  reservePrice;
     address  topBidder;
-    //-------------------
-    bytes32 collateralizationDeadlineBlockHash;
+  }
+
+  struct BidInfo {
+    uint256 bidValue;
+    address tokenContract;
+    uint256 tokenId;
   }
 
   //A Merkle proof and block header
@@ -64,19 +67,13 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       uint256 deadlineBlockNumber
   );
 
-  struct BidInfo {
-    uint256 bidValue;
-    address tokenContract;
-    uint256 tokenId;
-  }
-
   // A mapping storing auction parameters and state, indexed by
   // the ERC721 contract address and token ID of the asset being
   // auctioned.
   mapping(address => mapping(uint256 => Auction)) public auctions_;
 
   //The bids of all participants for a certain NTF
-  mapping(address => BidInfo) biddings_;
+  mapping(address => BidInfo) public biddings_;
 
   function createAuction(
     address tokenContract,
@@ -110,7 +107,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     auction.reservePrice = reservePrice;
     // Reset
     auction.topBidder = address(0);
-    auction.collateralizationDeadlineBlockHash = bytes32(0);
 
     // The seller transfers the NFT assets to the current contract
     ERC721(tokenContract).transferFrom(msg.sender, address(this), tokenId);
@@ -173,6 +169,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     );
   }
 
+  receive() external payable {}
   fallback() external payable {}
 
   /// @notice Ends an active auction. Can only end an auction if the bid phase is over.
@@ -293,24 +290,8 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       return auctions_[tokenContract][tokenId];
   }
 
-  // Gets the balance of the given account at a past block by 
-  // traversing the given Merkle proof for the state trie. 
-  function _getProvenAccountBalance(
-      bytes[] memory proof,
-      bytes memory blockHeaderRLP,
-      bytes32 blockHash,
-      address account
-  )
-      internal
-      virtual
-      view
-      returns (uint256 accountBalance)
-  {
-      return LibBalanceProof.getProvenAccountBalance(
-          proof,
-          blockHeaderRLP,
-          blockHash,
-          account
-      );
+  function getBidInfo(address bidder) external view returns (BidInfo memory info) {
+    return biddings_[bidder];
   }
+
 }
