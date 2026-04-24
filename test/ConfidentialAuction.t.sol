@@ -80,7 +80,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
 
   function testCannotBidBeforeCreateAuction() external {
     vm.expectRevert(NotInBidPeriodError.selector);
-    ConfidentialAuction.BidInfo memory actualInfo = doBid(TOKEN_ID, TWO_ETH);
+    doBid(TOKEN_ID, TWO_ETH);
     createAuction(TOKEN_ID);
   }
 
@@ -89,6 +89,19 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     skip(2 hours);
     vm.expectRevert(NotInBidPeriodError.selector);
     doBid(TOKEN_ID, TWO_ETH);
+  }
+
+  function testEndAuction() external {
+    ConfidentialAuction.Auction memory beforeAuction = createAuction(TOKEN_ID);
+    bool statusBeforeEnd = beforeAuction.started;
+
+    skip(2 hours);
+    auction.endAuction(address(erc721), TOKEN_ID);
+    ConfidentialAuction.Auction memory afterAuction = auction.getAuction(address(erc721), TOKEN_ID);
+
+    bool statusAfterEnd = afterAuction.started;
+    assertEq(!statusBeforeEnd, statusAfterEnd, "statusAfterEnd");
+    assertEq(false, statusAfterEnd, "statusAfterEnd");
   }
 
 //-------------------------------------------------------------------
@@ -105,7 +118,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
   function assertBidEqual(
       ConfidentialAuction.BidInfo memory actualInfo,
       ConfidentialAuction.BidInfo memory expectedInfo
-  ) private {
+  ) private pure {
       assertEq(actualInfo.bidValue, expectedInfo.bidValue, "bidValue");
       assertEq(actualInfo.tokenContract, expectedInfo.tokenContract, "tokenContract");
       assertEq(actualInfo.tokenId, expectedInfo.tokenId, "tokenId");
@@ -128,7 +141,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
   function assertAuctionsEqual(
       ConfidentialAuction.Auction memory actualAuction,
       ConfidentialAuction.Auction memory expectedAuction
-  ) private {
+  ) private pure {
       assertEq(actualAuction.seller, expectedAuction.seller, "seller");
       assertEq(actualAuction.endOfBiddingPeriod, expectedAuction.endOfBiddingPeriod, "endOfBiddingPeriod");
       assertEq(actualAuction.started, expectedAuction.started, "started");

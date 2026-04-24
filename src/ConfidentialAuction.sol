@@ -187,6 +187,9 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     }
 
     Auction storage auction = auctions_[tokenContract][tokenId];
+    if (false == auction.started) {
+      revert NoNeedEndAuction();
+    }
 
     if (block.timestamp <= auction.endOfBiddingPeriod) {
       revert BidPeriodOngoingError(block.timestamp, auction.endOfBiddingPeriod);
@@ -217,6 +220,8 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       // reset top bidder's bidValue
       biddings_[auction.topBidder].bidValue = 0;
     }
+
+    auction.started = false;
   }
 
   /// @notice Withdraws collateral from auction contract once an auction is over.
