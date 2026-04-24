@@ -11,17 +11,22 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
   TestERC721 erc721;
 
   uint64  constant ONE_ETH  = uint64(1 ether / 1000 gwei);
+  uint64  constant TWO_ETH  = uint64(2 ether / 1000 gwei);
   uint256 constant TOKEN_ID = 1;
+
+  uint256 constant PRANK_GIVE = uint256(10 ether / 1000 gwei);
 
   function setUp() public override {
     super.setUp();
     auction = new ConfidentialAuction();
     erc721  = new TestERC721();
     erc721.mint(alice, TOKEN_ID);
-    hoax(alice);
+    hoax(alice, PRANK_GIVE);
     erc721.setApprovalForAll(address(auction), true);
 
     console2.log("setUp !!!");
+    console2.log("ONE_ETH:%d",
+                  ONE_ETH);
   }
 
   function testCreateAuction() external {
@@ -49,15 +54,64 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
   }
 
   function test_bid() external {
-    
+    ConfidentialAuction.BidInfo memory expectedInfo =
+      ConfidentialAuction.BidInfo({
+        bidValue: TWO_ETH,
+        tokenContract: address(erc721),
+        tokenId: TOKEN_ID
+      });
+
+    createAuction(TOKEN_ID);
+    ConfidentialAuction.BidInfo memory actualInfo = doBid(TOKEN_ID, TWO_ETH);
+    assertBidEqual(actualInfo, expectedInfo);
   }
 
+  // function test_bidBalanceChange() external {
+  //   uint256 before_balance = address(this).balance;
+  //   console2.logUint(before_balance);
 
+  //   createAuction(TOKEN_ID);
+  //   ConfidentialAuction.BidInfo memory actualInfo = doBid(TOKEN_ID, TWO_ETH);
+  //   uint256 after_balance = address(this).balance;
+  //   console2.logUint(after_balance);
 
+  //   assertEq(before_balance - after_balance, TWO_ETH);
+  // }
+
+  function testCannotBidBeforeCreateAuction() external {
+    vm.expectRevert(NotInBidPeriodError.selector);
+    ConfidentialAuction.BidInfo memory actualInfo = doBid(TOKEN_ID, TWO_ETH);
+    createAuction(TOKEN_ID);
+  }
+
+  function testCannotBidAfterBidPeriod() external {
+    createAuction(TOKEN_ID);
+    skip(2 hours);
+    vm.expectRevert(NotInBidPeriodError.selector);
+    doBid(TOKEN_ID, TWO_ETH);
+  }
 
 //-------------------------------------------------------------------
 
-  function createAuction(uint256 tokenId) 
+  function doBid(uint256 tokenId, uint256 amount)
+    private 
+    returns (ConfidentialAuction.BidInfo memory info)
+  {
+    hoax(alice, PRANK_GIVE);
+    auction.bid{value: amount}(address(erc721), tokenId);
+    return auction.getBidInfo(alice);
+  }
+
+  function assertBidEqual(
+      ConfidentialAuction.BidInfo memory actualInfo,
+      ConfidentialAuction.BidInfo memory expectedInfo
+  ) private {
+      assertEq(actualInfo.bidValue, expectedInfo.bidValue, "bidValue");
+      assertEq(actualInfo.tokenContract, expectedInfo.tokenContract, "tokenContract");
+      assertEq(actualInfo.tokenId, expectedInfo.tokenId, "tokenId");
+  }
+
+  function createAuction(uint256 tokenId)
       private 
       returns (ConfidentialAuction.Auction memory a)
   {
