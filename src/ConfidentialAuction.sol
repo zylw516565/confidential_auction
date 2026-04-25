@@ -47,7 +47,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   mapping(address => mapping(uint256 => Auction)) public auctions_;
 
   //The bids of all participants for a certain NTF
-  mapping(address => BidInfo) public biddings_;
+  mapping(address => mapping(uint256 => mapping(address => BidInfo))) public biddings_;
 
   function createAuction(
     address tokenContract,
@@ -124,9 +124,13 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revert InvalidBidError(amount);
     }
 
-    biddings_[msg.sender].bidValue = amount;
-    biddings_[msg.sender].tokenContract = tokenContract;
-    biddings_[msg.sender].tokenId = tokenId;
+    if (biddings_[tokenContract][tokenId][msg.sender].bidValue > 0) {
+      revert AlreadyBidError();
+    }
+
+    biddings_[tokenContract][tokenId][msg.sender].bidValue += amount;
+    biddings_[tokenContract][tokenId][msg.sender].tokenContract = tokenContract;
+    biddings_[tokenContract][tokenId][msg.sender].tokenId = tokenId;
 
     uint256 currentTopBid = auction.topBid;
     if(amount > auction.topBid) {
@@ -188,13 +192,14 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
 
       // returning any excess to bidder
-      uint256 excessETH = biddings_[auction.topBidder].bidValue - auction.secondTopBid;
+      BidInfo memory bidinfo = biddings_[tokenContract][tokenId][auction.topBidder];
+      uint256 excessETH = bidinfo.bidValue - auction.secondTopBid;
       require(address(this).balance >= excessETH);
       (success, ) =  auction.topBidder.call{value: excessETH}("");
       require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
 
       // reset top bidder's bidValue
-      biddings_[auction.topBidder].bidValue = 0;
+      biddings_[tokenContract][tokenId][auction.topBidder].bidValue = 0;
     }
 
     auction.started = false;
@@ -221,11 +226,12 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revert BidPeriodOngoingError(block.timestamp, auction.endOfBiddingPeriod);
     }
 
-    uint256 withdrawAmount = biddings_[msg.sender].bidValue;
+    BidInfo memory bidinfo = biddings_[tokenContract][tokenId][msg.sender];
+    uint256 withdrawAmount = bidinfo.bidValue;
     if (
       withdrawAmount <= 0 ||
-      tokenContract != biddings_[msg.sender].tokenContract ||
-      tokenId       != biddings_[msg.sender].tokenId
+      tokenContract != bidinfo.tokenContract ||
+      tokenId       != bidinfo.tokenId
     ) {
       revert NoRefundBalanceError();
     }
@@ -233,7 +239,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     require(address(this).balance >= withdrawAmount, NoRefundBalanceError());
 
     // reset bidder's bidValue
-    biddings_[msg.sender].bidValue = 0;
+    biddings_[tokenContract][tokenId][msg.sender].bidValue = 0;
 
     (bool success, ) = msg.sender.call{value: withdrawAmount}("");
     require(success, 'TransferHelper::call: ETH transfer failed');
@@ -271,8 +277,8 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       return auctions_[tokenContract][tokenId];
   }
 
-  function getBidInfo(address bidder) external view returns (BidInfo memory info) {
-    return biddings_[bidder];
+  function getBidInfo(address tokenContract, uint256 tokenId, address bidder) external view returns (BidInfo memory info) {
+    return biddings_[tokenContract][tokenId][bidder];
   }
 
 }

@@ -172,7 +172,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
 
     skip(2 hours);
 
-    ConfidentialAuction.BidInfo memory info = auction.getBidInfo(alice);
+    ConfidentialAuction.BidInfo memory info = auction.getBidInfo(address(erc721), TOKEN_ID, alice);
     auction.withdrawCollateral(address(erc721), TOKEN_ID);
     uint256 after_balance = alice.balance;
 
@@ -223,7 +223,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     returns (ConfidentialAuction.BidInfo memory info)
   {
     auction.bid{value: amount}(address(erc721), tokenId);
-    return auction.getBidInfo(alice);
+    return auction.getBidInfo(address(erc721), tokenId, alice);
   }
 
   function assertBidEqual(
