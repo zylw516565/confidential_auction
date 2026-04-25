@@ -7,7 +7,6 @@ interface IConfidentialAuctionErrors {
     error InvalidAuctionIndexError(uint32 index);
     error BidPeriodTooShortError(uint32 bidPeriod);
     error NotInBidPeriodError();
-    error NotInRevealPeriodError();
     error IncorrectVaultAddressError(address expectedVault, address actualVault);
     error UnrevealedBidError();
     error CannotWithdrawError();

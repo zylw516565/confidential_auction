@@ -24,7 +24,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     auction = new ConfidentialAuction();
     erc721  = new TestERC721();
     erc721.mint(alice, TOKEN_ID);
-    hoax(alice, PRANK_GIVE);
+    startHoax(alice, PRANK_GIVE);
     erc721.setApprovalForAll(address(auction), true);
 
     console2.log("setUp !!!");
@@ -33,6 +33,8 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
   }
 
   function testCreateAuction() external {
+    startHoax(alice, PRANK_GIVE);
+
     ConfidentialAuction.Auction memory expectedAuction =
       ConfidentialAuction.Auction({
         seller: alice,
@@ -47,16 +49,19 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
 
     ConfidentialAuction.Auction memory actualAuction = 
       createAuction(TOKEN_ID);
-
     assertAuctionsEqual(actualAuction, expectedAuction);
+
+    vm.stopPrank();
   }
 
   function testCannotCreateAuctionForItemThatYouDoNotOwn() external {
-      vm.expectRevert("ERC721NonexistentToken(4)");
-      createAuction(4);
+    vm.expectRevert("ERC721NonexistentToken(4)");
+    createAuction(4);
   }
 
   function test_bid() external {
+    startHoax(alice, PRANK_GIVE);
+
     ConfidentialAuction.BidInfo memory expectedInfo =
       ConfidentialAuction.BidInfo({
         bidValue: TWO_ETH,
@@ -67,34 +72,50 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     createAuction(TOKEN_ID);
     ConfidentialAuction.BidInfo memory actualInfo = doBid(TOKEN_ID, TWO_ETH);
     assertBidEqual(actualInfo, expectedInfo);
+
+    vm.stopPrank();
   }
 
-  // function test_bidBalanceChange() external {
-  //   uint256 before_balance = address(this).balance;
-  //   console2.logUint(before_balance);
+  function test_bidBalanceChange() external {
+    startHoax(alice, PRANK_GIVE);
 
-  //   createAuction(TOKEN_ID);
-  //   ConfidentialAuction.BidInfo memory actualInfo = doBid(TOKEN_ID, TWO_ETH);
-  //   uint256 after_balance = address(this).balance;
-  //   console2.logUint(after_balance);
+    uint256 before_balance = alice.balance;
+    console2.logUint(before_balance);
 
-  //   assertEq(before_balance - after_balance, TWO_ETH);
-  // }
+    createAuction(TOKEN_ID);
+    doBid(TOKEN_ID, TWO_ETH);
+    uint256 after_balance = alice.balance;
+    console2.logUint(after_balance);
+
+    assertEq(before_balance - after_balance, TWO_ETH);
+
+    vm.stopPrank();
+  }
 
   function testCannotBidBeforeCreateAuction() external {
+    startHoax(alice, PRANK_GIVE);
+
     vm.expectRevert(NotInBidPeriodError.selector);
     doBid(TOKEN_ID, TWO_ETH);
     createAuction(TOKEN_ID);
+
+    vm.stopPrank();
   }
 
   function testCannotBidAfterBidPeriod() external {
+    startHoax(alice, PRANK_GIVE);
+
     createAuction(TOKEN_ID);
     skip(2 hours);
     vm.expectRevert(NotInBidPeriodError.selector);
     doBid(TOKEN_ID, TWO_ETH);
+
+    vm.stopPrank();
   }
 
   function testEndAuction() external {
+    startHoax(alice, PRANK_GIVE);
+
     ConfidentialAuction.Auction memory beforeAuction = createAuction(TOKEN_ID);
     bool statusBeforeEnd = beforeAuction.started;
 
@@ -105,16 +126,24 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     bool statusAfterEnd = afterAuction.started;
     assertEq(!statusBeforeEnd, statusAfterEnd, "statusAfterEnd");
     assertEq(false, statusAfterEnd, "statusAfterEnd");
+
+    vm.stopPrank();
   }
 
   function testCannotEndAuctionBeforeCreateAuction() external {
+    startHoax(alice, PRANK_GIVE);
+
     vm.expectRevert(NoNeedEndAuction.selector);
 
     auction.endAuction(address(erc721), TOKEN_ID);
     createAuction(TOKEN_ID);
+
+    vm.stopPrank();
   }
 
   function testCannotEndAuctionBeforeEndOfBid() external {
+    startHoax(alice, PRANK_GIVE);
+
     ConfidentialAuction.Auction memory beforeAuction = createAuction(TOKEN_ID);
 
     bytes memory expectError = bytes.concat(
@@ -128,9 +157,62 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     vm.expectRevert(expectError);
 
     auction.endAuction(address(erc721), TOKEN_ID);
+
+    vm.stopPrank();
   }
 
+  function testWithdrawCollateral() external {
+    startHoax(alice, PRANK_GIVE);
 
+    createAuction(TOKEN_ID);
+    skip(10 seconds);
+    uint256 before_balance = alice.balance;
+    doBid(TOKEN_ID, TWO_ETH);
+    uint256 mid_balance = alice.balance;
+
+    skip(2 hours);
+
+    ConfidentialAuction.BidInfo memory info = auction.getBidInfo(alice);
+    auction.withdrawCollateral(address(erc721), TOKEN_ID);
+    uint256 after_balance = alice.balance;
+
+    console2.log("before_balance: %d", before_balance);
+    console2.log("before_balance: %d", before_balance);
+    console2.log("mid_balance: %d", mid_balance);
+    console2.log("after_balance: %d", after_balance);
+    assertEq(before_balance - mid_balance, TWO_ETH, "Not Eq");
+    assertEq(after_balance  - mid_balance, TWO_ETH, "Not Eq");
+    assertEq(before_balance, after_balance, "Not Eq");
+    assertEq(info.bidValue , TWO_ETH, "Not Eq");
+
+    vm.stopPrank();
+  }
+
+  function testCannotWithdrawCollateralNotEndAuction() external {
+    ConfidentialAuction.Auction memory beforeAuction = createAuction(TOKEN_ID);
+
+    skip(10 seconds);
+    doBid(TOKEN_ID, TWO_ETH);
+
+    bytes memory expectError = bytes.concat(
+      bytes("BidPeriodOngoingError("),
+      bytes(block.timestamp.toString()),
+      bytes(", "),
+      bytes(beforeAuction.endOfBiddingPeriod.toString()),
+      bytes(")"));
+
+    vm.expectRevert(expectError);
+
+    auction.withdrawCollateral(address(erc721), TOKEN_ID);
+  }
+
+  function testCannotWithdrawCollateralIfNoBid() external {
+    ConfidentialAuction.Auction memory beforeAuction = createAuction(TOKEN_ID);
+    skip(2 hours);
+
+    vm.expectRevert(NoRefundBalanceError.selector);
+    auction.withdrawCollateral(address(erc721), TOKEN_ID);
+  }
 
 
 
@@ -140,7 +222,6 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     private 
     returns (ConfidentialAuction.BidInfo memory info)
   {
-    hoax(alice, PRANK_GIVE);
     auction.bid{value: amount}(address(erc721), tokenId);
     return auction.getBidInfo(alice);
   }
@@ -158,7 +239,6 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
       private 
       returns (ConfidentialAuction.Auction memory a)
   {
-      hoax(alice);
       auction.createAuction(
           address(erc721),
           tokenId,
