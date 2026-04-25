@@ -4,10 +4,9 @@ pragma solidity ^0.8.33;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
+import "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
-  //The base unit for bids.
-  uint256 public constant BASE_BID_UNIT = 1000 gwei;
 
   //Representation of an auction in storage.
   struct Auction {
@@ -28,12 +27,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     uint256 tokenId;
   }
 
-  //A Merkle proof and block header
-  struct CollateralizationProof {
-      bytes[] accountMerkleProof;
-      bytes blockHeaderRLP;
-  }
-
   // Emitted when an auction is created.
   event AuctionCreated(
       address tokenContract,
@@ -43,27 +36,9 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       uint256 reservePrice
   );
 
-  // Emitted when a bidding is revealed.
-  event BidRevealed(
-      address tokenContract,
-      uint256 tokenId,
-      address bidVault,
-      address bidder,
-      bytes32 salt,
-      uint256 bidValue
-  );
-
   event Bidded(
       address tokenContract,
       uint256 tokenId
-  );
-
-  // Emitted when the first bid is revealed for an auction.
-  event CollateralizationDeadlineSet(
-      address tokenContract,
-      uint256 tokenId,
-      uint32 index,
-      uint256 deadlineBlockNumber
   );
 
   // A mapping storing auction parameters and state, indexed by
@@ -143,7 +118,9 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     }
 
     uint256 amount = msg.value;
-    if(amount <= 0) {
+    if(amount <= 0 ||
+       amount <= auction.reservePrice
+    ) {
       revert InvalidBidError(amount);
     }
 
@@ -168,8 +145,8 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     );
   }
 
-  receive() external payable {}
-  fallback() external payable {}
+  // receive() external payable {}
+  // fallback() external payable {}
 
   /// @notice Ends an active auction. Can only end an auction if the bid phase is over.
   /// @param tokenContract The address of the ERC721 contract for the asset auctioned.
