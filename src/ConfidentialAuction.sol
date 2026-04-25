@@ -4,7 +4,6 @@ pragma solidity ^0.8.33;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
-import "./LibBalanceProof.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   //The base unit for bids.
@@ -204,7 +203,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       ERC721(tokenContract).safeTransferFrom(address(this), auction.seller, tokenId);
     } else {
       // Transfer auctioned asset to top bidder
-      ERC721(tokenContract).safeTransferFrom(address(this), auction.topBidder , tokenId);
+      ERC721(tokenContract).safeTransferFrom(address(this), auction.topBidder, tokenId);
 
       // Transfer ETH to seller
       require(address(this).balance >= auction.secondTopBid);
@@ -283,7 +282,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     view
     returns (uint256 bidValue)
   {
-      return auctions_[tokenContract][tokenId].secondTopBid * BASE_BID_UNIT;
+      return auctions_[tokenContract][tokenId].secondTopBid;
   }
 
   // Gets the parameters and state of an auction in storage.
