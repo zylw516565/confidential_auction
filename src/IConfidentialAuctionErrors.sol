@@ -10,4 +10,5 @@ interface IConfidentialAuctionErrors {
     error InvalidBidError(uint256 bid);
     error NoRefundBalanceError();
     error NoNeedEndAuction();
+    error AlreadyBidError();
 }
