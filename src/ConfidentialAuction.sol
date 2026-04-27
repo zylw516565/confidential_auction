@@ -4,7 +4,6 @@ pragma solidity ^0.8.33;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
-import "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
