@@ -4,7 +4,7 @@ pragma solidity ^0.8.33;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IConfidentialAuctionErrors.sol";
-import "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
+import {Nox, eaddress, euint256, externalEaddress, externalEuint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
 contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
@@ -23,8 +23,6 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
   struct BidInfo {
     uint256 bidValue;
-    address tokenContract;
-    uint256 tokenId;
   }
 
   // Emitted when an auction is created.
@@ -37,17 +35,17 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   );
 
   event Bidded(
-      address tokenContract,
-      uint256 tokenId
+    eaddress eTokenContract,
+    euint256 eTokenId
   );
 
   // A mapping storing auction parameters and state, indexed by
   // the ERC721 contract address and token ID of the asset being
   // auctioned.
-  mapping(address => mapping(uint256 => Auction)) public auctions_;
+  mapping(eaddress => mapping(euint256 => Auction)) public auctions_;
 
   //The bids of all participants for a certain NTF
-  mapping(address => mapping(uint256 => mapping(address => BidInfo))) public biddings_;
+  mapping(eaddress => mapping(euint256 => mapping(address => BidInfo))) public biddings_;
 
   function createAuction(
     address tokenContract,
@@ -61,7 +59,9 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revert InvalidTokenContractError();
     }
 
-    Auction storage auction = auctions_[tokenContract][tokenId];
+    eaddress eTokenContract = eaddress.wrap(bytes32(uint256(uint160(tokenContract))));
+    euint256 eTokenId = Nox.toEuint256(tokenId);
+    Auction storage auction = auctions_[eTokenContract][eTokenId];
 
     if (bidPeriod < 1 hours) {
       revert BidPeriodTooShortError(bidPeriod);
@@ -95,20 +95,28 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     );
   }
 
-  /// @param tokenContract The address of the ERC721 contract for the asset
+  /// @param tokenContractHandle The address of the ERC721 contract for the asset
   ///        being auctioned.
-  /// @param tokenId The ERC721 token ID of the asset being auctioned.
+  /// @param tokenContractProof the Proof
+  /// @param tokenIdHandle The ERC721 token ID of the asset being auctioned.
+  /// @param tokenIdProof  the Proof
+
   function bid(
-    address tokenContract,
-    uint256 tokenId
+    externalEaddress tokenContractHandle,
+    bytes calldata tokenContractProof,
+    externalEuint256 tokenIdHandle,
+    bytes calldata tokenIdProof
   )
     external payable nonReentrant
   {
-    if(tokenContract == address(0)) {
+    eaddress eTokenContract = Nox.fromExternal(tokenContractHandle, tokenContractProof);
+    euint256 eTokenId = Nox.fromExternal(tokenIdHandle, tokenIdProof);
+
+    if(eaddress.unwrap(eTokenContract) == 0) {
       revert InvalidTokenContractError();
     }
 
-    Auction storage auction = auctions_[tokenContract][tokenId];
+    Auction storage auction = auctions_[eTokenContract][eTokenId];
 
     if (
       block.timestamp > auction.endOfBiddingPeriod ||
@@ -124,13 +132,11 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revert InvalidBidError(amount);
     }
 
-    if (biddings_[tokenContract][tokenId][msg.sender].bidValue > 0) {
+    if (biddings_[eTokenContract][eTokenId][msg.sender].bidValue > 0) {
       revert AlreadyBidError();
     }
 
-    biddings_[tokenContract][tokenId][msg.sender].bidValue += amount;
-    biddings_[tokenContract][tokenId][msg.sender].tokenContract = tokenContract;
-    biddings_[tokenContract][tokenId][msg.sender].tokenId = tokenId;
+    biddings_[eTokenContract][eTokenId][msg.sender].bidValue += amount;
 
     uint256 currentTopBid = auction.topBid;
     if(amount > auction.topBid) {
@@ -144,8 +150,8 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
     }
 
     emit Bidded(
-      tokenContract,
-      tokenId
+      eTokenContract,
+      eTokenId
     );
   }
 
@@ -153,20 +159,28 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
   // fallback() external payable {}
 
   /// @notice Ends an active auction. Can only end an auction if the bid phase is over.
-  /// @param tokenContract The address of the ERC721 contract for the asset auctioned.
-  /// @param tokenId The ERC721 token ID of the asset auctioned.
+  /// @param tokenContractHandle The address of the ERC721 contract for the asset
+  ///        being auctioned.
+  /// @param tokenContractProof the Proof
+  /// @param tokenIdHandle The ERC721 token ID of the asset being auctioned.
+  /// @param tokenIdProof  the Proof
   function endAuction(
-      address tokenContract,
-      uint256 tokenId
+    externalEaddress tokenContractHandle,
+    bytes calldata tokenContractProof,
+    externalEuint256 tokenIdHandle,
+    bytes calldata tokenIdProof
   )
     external
     nonReentrant
   {
-    if(tokenContract == address(0)) {
+    eaddress eTokenContract = Nox.fromExternal(tokenContractHandle, tokenContractProof);
+    euint256 eTokenId = Nox.fromExternal(tokenIdHandle, tokenIdProof);
+
+    if(eaddress.unwrap(eTokenContract) == 0) {
       revert InvalidTokenContractError();
     }
 
-    Auction storage auction = auctions_[tokenContract][tokenId];
+    Auction storage auction = auctions_[eTokenContract][eTokenId];
     if (false == auction.started) {
       revert NoNeedEndAuction();
     }
@@ -181,10 +195,10 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       address(0) == auction.topBidder
     ) {
       // No winner, return asset to seller.
-      ERC721(tokenContract).safeTransferFrom(address(this), auction.seller, tokenId);
+      ERC721(eTokenContract).safeTransferFrom(address(this), auction.seller, eTokenId);
     } else {
       // Transfer auctioned asset to top bidder
-      ERC721(tokenContract).safeTransferFrom(address(this), auction.topBidder, tokenId);
+      ERC721(eTokenContract).safeTransferFrom(address(this), auction.topBidder, eTokenId);
 
       // Transfer ETH to seller
       require(address(this).balance >= auction.secondTopBid);
@@ -192,14 +206,14 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
 
       // returning any excess to bidder
-      BidInfo memory bidinfo = biddings_[tokenContract][tokenId][auction.topBidder];
+      BidInfo memory bidinfo = biddings_[eTokenContract][eTokenId][auction.topBidder];
       uint256 excessETH = bidinfo.bidValue - auction.secondTopBid;
       require(address(this).balance >= excessETH);
       (success, ) =  auction.topBidder.call{value: excessETH}("");
       require(success, 'TransferHelper::safeTransferETH: ETH transfer failed');
 
       // reset top bidder's bidValue
-      biddings_[tokenContract][tokenId][auction.topBidder].bidValue = 0;
+      biddings_[eTokenContract][eTokenId][auction.topBidder].bidValue = 0;
     }
 
     auction.started = false;
@@ -228,11 +242,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
     BidInfo memory bidinfo = biddings_[tokenContract][tokenId][msg.sender];
     uint256 withdrawAmount = bidinfo.bidValue;
-    if (
-      withdrawAmount <= 0 ||
-      tokenContract != bidinfo.tokenContract ||
-      tokenId       != bidinfo.tokenId
-    ) {
+    if (withdrawAmount <= 0) {
       revert NoRefundBalanceError();
     }
 
