@@ -2,6 +2,7 @@
 cache/
 out/
 lib/
+artifacts
 
 # Ignores development broadcast logs
 !/broadcast
@@ -13,3 +14,4 @@ docs/
 
 # Dotenv file
 .env
+.deps
