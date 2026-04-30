@@ -62,7 +62,7 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
 
     Auction storage auction = auctions_[tokenContract][tokenId];
 
-    if (bidPeriod < 1 hours) {
+    if (bidPeriod < 5 minutes) {
       revert BidPeriodTooShortError(bidPeriod);
     }
 

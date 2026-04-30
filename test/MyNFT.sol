@@ -12,7 +12,7 @@ contract MyNFT is ERC721, Ownable {
     ) ERC721("MyToken", "MTK") Ownable(initialOwner) {}
  
     function safeMint(address to) public onlyOwner {
-        uint256 tokenId = _nextTokenId++;
+        uint256 tokenId = ++_nextTokenId;
         _safeMint(to, tokenId);
     }
 }
