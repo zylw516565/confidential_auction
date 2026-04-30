@@ -329,6 +329,9 @@ function App() {
                     >
                         {loading ? <span className="loading"></span> : '创建拍卖'}
                     </button>
+                    <p className="warning-text">
+                        <strong>**注意：**</strong> 创建拍卖前，您需要先授权智能合约操作您的NFT。
+                    </p>
                 </section>
 
                 <section className="card">

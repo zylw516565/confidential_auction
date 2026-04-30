@@ -25,7 +25,7 @@ contract ConfidentialAuctionTest is IConfidentialAuctionErrors, TestActors {
     erc721  = new TestERC721();
     erc721.mint(alice, TOKEN_ID);
     startHoax(alice, PRANK_GIVE);
-    erc721.setApprovalForAll(address(auction), true);
+    erc721.approve(address(auction), TOKEN_ID);
 
     console2.log("setUp !!!");
     console2.log("ONE_ETH:%d",

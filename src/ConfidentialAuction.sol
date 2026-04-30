@@ -66,6 +66,10 @@ contract ConfidentialAuction is IConfidentialAuctionErrors, ReentrancyGuard{
       revert BidPeriodTooShortError(bidPeriod);
     }
 
+    if (ERC721(tokenContract).getApproved(tokenId) != address(this)) {
+      revert NTFNotApprovedForAuction(tokenContract, tokenId);
+    }
+
     auction.seller = msg.sender;
     auction.endOfBiddingPeriod = uint32(block.timestamp) + bidPeriod;
 

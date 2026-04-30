@@ -11,4 +11,5 @@ interface IConfidentialAuctionErrors {
     error NoRefundBalanceError();
     error NoNeedEndAuction();
     error AlreadyBidError();
+    error NTFNotApprovedForAuction(address tokenContract, uint256 tokenId);
 }
