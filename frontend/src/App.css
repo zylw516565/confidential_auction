@@ -115,6 +115,57 @@ body {
     padding-bottom: 10px;
 }
 
+.card h3 {
+    color: #555;
+    margin-bottom: 12px;
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+.approval-section {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid #e9ecef;
+}
+
+.approval-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.approval-status {
+    margin-top: 15px;
+    padding: 12px;
+    background: white;
+    border-radius: 6px;
+    border-left: 4px solid #667eea;
+}
+
+.status-item {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.status-item:last-child {
+    margin-bottom: 0;
+}
+
+.status-item strong {
+    color: #333;
+    margin-right: 8px;
+}
+
+.divider {
+    height: 1px;
+    background: #e9ecef;
+    margin: 20px 0;
+}
+
 .form-group {
     margin-bottom: 15px;
 }

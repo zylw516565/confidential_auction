@@ -13,6 +13,13 @@ const AUCTION_ABI = [
     "event Bidded(address indexed tokenContract, uint256 indexed tokenId)"
 ];
 
+const ERC721_ABI = [
+    "function approve(address to, uint256 tokenId) public",
+    "function getApproved(uint256 tokenId) public view returns (address)",
+    "function ownerOf(uint256 tokenId) public view returns (address)",
+    "event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId)"
+];
+
 function App() {
     const [provider, setProvider] = useState(null);
     const [signer, setSigner] = useState(null);
@@ -41,6 +48,17 @@ function App() {
         tokenId: ''
     });
 
+    const [approveData, setApproveData] = useState({
+        nftContractAddress: '',
+        tokenId: '',
+        approvedAddress: ''
+    });
+    const [approvalStatus, setApprovalStatus] = useState({
+        isApproved: false,
+        approvedAddress: '',
+        owner: ''
+    });
+
     useEffect(() => {
         if (window.ethereum) {
             window.ethereum.on('accountsChanged', handleAccountsChanged);
@@ -61,24 +79,48 @@ function App() {
         }
     };
 
+    // 设置Provider和Signer
+    const setupProviderAndSigner = async (address) => {
+        try {
+            const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+            setProvider(web3Provider);
+            
+            const web3Signer = web3Provider.getSigner();
+            setSigner(web3Signer);
+            setUserAddress(address);
+
+            // 验证网络
+            const network = await web3Provider.getNetwork();
+            console.log("当前钱包网络 chainId:", network.chainId);
+            console.log("当前地址:", address);
+            
+        } catch (error) {
+            console.error('设置Provider失败:', error);
+            showMessage('钱包连接异常: ' + error.message, 'error');
+        }
+    };
+
+    // 手动连接钱包
     const connectWallet = async () => {
         try {
-            if (typeof window.ethereum !== 'undefined') {
-                const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
-                await web3Provider.send("eth_requestAccounts", []);
-                const web3Signer = web3Provider.getSigner();
-                const address = await web3Signer.getAddress();
-
-                setProvider(web3Provider);
-                setSigner(web3Signer);
-                setUserAddress(address);
-                showMessage('钱包连接成功！', 'success');
-            } else {
+            if (!window.ethereum) {
                 showMessage('请安装MetaMask钱包！', 'error');
+                return;
+            }
+
+            setLoading(true);
+            // 请求账户授权
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            
+            if (accounts.length > 0) {
+                await setupProviderAndSigner(accounts[0]);
+                showMessage('钱包连接成功！', 'success');
             }
         } catch (error) {
             console.error('连接钱包失败:', error);
             showMessage('连接钱包失败: ' + error.message, 'error');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -96,6 +138,63 @@ function App() {
     const showMessage = (text, type) => {
         setMessage({ text, type });
         setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    };
+
+    const approveNFT = async () => {
+        if (!signer) {
+            showMessage('请先连接钱包', 'error');
+            return;
+        }
+
+        if (!approveData.nftContractAddress || !approveData.tokenId || !approveData.approvedAddress) {
+            showMessage('请填写所有必填字段', 'error');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const nftContract = new ethers.Contract(approveData.nftContractAddress, ERC721_ABI, signer);
+            
+            const tx = await nftContract.approve(approveData.approvedAddress, approveData.tokenId);
+            showMessage('授权交易已提交，等待确认...', 'info');
+            await tx.wait();
+            showMessage('NFT授权成功！', 'success');
+            
+            await checkApprovalStatus();
+        } catch (error) {
+            console.error('NFT授权失败:', error);
+            showMessage('NFT授权失败: ' + error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const checkApprovalStatus = async () => {
+        if (!provider || !approveData.nftContractAddress || !approveData.tokenId) {
+            return;
+        }
+
+        try {
+            const nftContract = new ethers.Contract(approveData.nftContractAddress, ERC721_ABI, provider);
+            const code = await provider.getCode(nftContract.address);
+            const code2 = await provider.getCode(auctionContractAddress);
+
+            const approvedAddress = await nftContract.getApproved(approveData.tokenId);
+            const owner = await nftContract.ownerOf(approveData.tokenId);
+            
+            setApprovalStatus({
+                isApproved: approvedAddress !== '0x0000000000000000000000000000000000000000',
+                approvedAddress: approvedAddress,
+                owner: owner
+            });
+        } catch (error) {
+            console.error('查询授权状态失败:', error);
+            setApprovalStatus({
+                isApproved: false,
+                approvedAddress: '',
+                owner: ''
+            });
+        }
     };
 
     const createAuction = async () => {
@@ -283,12 +382,91 @@ function App() {
 
                 <section className="card">
                     <h2>创建拍卖</h2>
+                    
+                    <div className="approval-section">
+                        <h3>🔐 NFT授权</h3>
+                        <div className="form-group">
+                            <label>NFT合约地址</label>
+                            <input
+                                type="text"
+                                value={approveData.nftContractAddress}
+                                onChange={(e) => {
+                                    setApproveData({...approveData, nftContractAddress: e.target.value});
+                                    setAuctionData({...auctionData, nftContractAddress: e.target.value});
+                                }}
+                                placeholder="0x..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>NFT Token ID</label>
+                            <input
+                                type="number"
+                                value={approveData.tokenId}
+                                onChange={(e) => {
+                                    setApproveData({...approveData, tokenId: e.target.value});
+                                    setAuctionData({...auctionData, tokenId: e.target.value});
+                                }}
+                                placeholder="0"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>授权给地址</label>
+                            <input
+                                type="text"
+                                value={approveData.approvedAddress}
+                                onChange={(e) => setApproveData({...approveData, approvedAddress: e.target.value})}
+                                placeholder={auctionContractAddress || "0x..."}
+                            />
+                        </div>
+                        <div className="approval-actions">
+                            <button 
+                                className="btn btn-primary" 
+                                onClick={checkApprovalStatus}
+                                disabled={!userAddress}
+                            >
+                                查询授权状态
+                            </button>
+                            <button 
+                                className="btn btn-success" 
+                                onClick={approveNFT}
+                                disabled={loading || !userAddress}
+                            >
+                                {loading ? <span className="loading"></span> : '授权NFT'}
+                            </button>
+                        </div>
+                        
+                        {approvalStatus.owner && (
+                            <div className="approval-status">
+                                <div className="status-item">
+                                    <strong>NFT所有者:</strong> {formatAddress(approvalStatus.owner)}
+                                </div>
+                                <div className="status-item">
+                                    <strong>授权状态:</strong> 
+                                    <span className={`status-badge ${approvalStatus.isApproved ? 'status-active' : 'status-ended'}`}>
+                                        {approvalStatus.isApproved ? '已授权' : '未授权'}
+                                    </span>
+                                </div>
+                                {approvalStatus.isApproved && (
+                                    <div className="status-item">
+                                        <strong>授权给:</strong> {formatAddress(approvalStatus.approvedAddress)}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="divider"></div>
+                    
+                    <h3>📝 拍卖设置</h3>
                     <div className="form-group">
                         <label>NFT合约地址</label>
                         <input
                             type="text"
                             value={auctionData.nftContractAddress}
-                            onChange={(e) => setAuctionData({...auctionData, nftContractAddress: e.target.value})}
+                            onChange={(e) => {
+                                setAuctionData({...auctionData, nftContractAddress: e.target.value});
+                                setApproveData({...approveData, nftContractAddress: e.target.value});
+                            }}
                             placeholder="0x..."
                         />
                     </div>
@@ -302,7 +480,7 @@ function App() {
                         />
                     </div>
                     <div className="form-group">
-                        <label>竞拍时长（小时）</label>
+                        <label>竞拍时长（秒）</label>
                         <input
                             type="number"
                             value={auctionData.bidPeriod}
@@ -312,7 +490,7 @@ function App() {
                         />
                     </div>
                     <div className="form-group">
-                        <label>保留价格（ETH）</label>
+                        <label>保留价格（wei）</label>
                         <input
                             type="number"
                             value={auctionData.reservePrice}
