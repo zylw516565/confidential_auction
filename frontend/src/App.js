@@ -205,7 +205,7 @@ function App() {
 
         try {
             setLoading(true);
-            const bidPeriodSeconds = parseInt(auctionData.bidPeriod) * 3600;
+            const bidPeriodSeconds = parseInt(auctionData.bidPeriod) * 60;
             const reservePriceWei = ethers.utils.parseEther(auctionData.reservePrice);
 
             const tx = await contract.createAuction(
@@ -480,17 +480,17 @@ function App() {
                         />
                     </div>
                     <div className="form-group">
-                        <label>竞拍时长（秒）</label>
+                        <label>竞拍时长（分）</label>
                         <input
                             type="number"
                             value={auctionData.bidPeriod}
                             onChange={(e) => setAuctionData({...auctionData, bidPeriod: e.target.value})}
-                            placeholder="24"
+                            placeholder="5"
                             min="1"
                         />
                     </div>
                     <div className="form-group">
-                        <label>保留价格（wei）</label>
+                        <label>保留价格（ETH）</label>
                         <input
                             type="number"
                             value={auctionData.reservePrice}
